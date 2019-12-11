@@ -1,0 +1,1 @@
+python train_pixelcnnpp.py --n_epochs 1 --use_cuda 1 --dataset imagenet32 --conditioning one-hot --output_dir outputs/pixelcnn_imagenet32_one_hot

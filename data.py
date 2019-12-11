@@ -22,6 +22,54 @@ class CaptionedImageDataset(Dataset):
     def __len__(self) -> int:
         raise NotImplementedError
 
+#Add BirdDataset
+class BirdsDataset(CaptionedImageDataset):
+    def __init__(self, root="datasets/Birds", train=True, max_size=-1):
+        '''
+        :param dirname: str, root dir where the dataset is downloaded
+        :param train: bool, true if train set else val
+        :param max_size: int, truncate size of the dataset, useful for debugging
+        '''
+        super().__init__((3, 32, 32), 200)
+        self.root = root
+
+        if train:
+            self.dirname = os.path.join(root, "train")
+        else:
+            self.dirname = os.path.join(root, "val")
+
+        #self.classId2className = load_vocab_imagenet(os.path.join(root, "map_clsloc.txt"))
+        data_files = sorted(os.listdir(self.dirname))
+        self.images = []
+        self.labelIds = []
+        self.labelNames = []
+
+        for i, f in enumerate(data_files):
+            print("loading data file {}/{}, {}".format(i + 1, len(data_files), os.path.join(self.dirname, f)))
+            data = np.load(os.path.join(self.dirname, f))
+            self.images.append(data['imgs'])
+            self.labelIds.append(data['labels'] - 1)
+            self.labelNames.append(data['captions'])
+            
+        self.images = np.concatenate(self.images, axis=0)
+        self.labelIds = np.concatenate(self.labelIds)
+        self.labelNames = np.concatenate(self.labelNames)
+
+        if max_size >= 0:
+            # limit the size of the dataset
+            self.labelNames = self.labelNames[:max_size]
+            self.labelIds = self.labelIds[:max_size]
+            self.labelNames = self.labelNames[:max_size]
+
+    def __getitem__(self, index: int) -> (torch.tensor, torch.tensor, list):
+        image = torch.tensor(self.images[index]).reshape(3, 32, 32).float() / 128 - 1
+        label = self.labelIds[index]
+        caption = self.labelNames[index].replace("_", " ")
+        
+        return (image, label, caption)
+
+    def __len__(self):
+        return len(self.labelNames)
 
 class Imagenet32Dataset(CaptionedImageDataset):
     def __init__(self, root="datasets/ImageNet32", train=True, max_size=-1):
@@ -50,6 +98,9 @@ class Imagenet32Dataset(CaptionedImageDataset):
             self.labelIds.append(data['labels'] - 1)
         self.images = np.concatenate(self.images, axis=0)
         self.labelIds = np.concatenate(self.labelIds)
+        #import pdb
+        #pdb.set_trace()
+        
         self.labelNames = [self.classId2className[y] for y in self.labelIds]
 
         if max_size >= 0:
@@ -89,6 +140,7 @@ def load_vocab_imagenet(vocab_file):
     with open(vocab_file) as f:
         for l in f.readlines():
             _, id, name = l[:-1].split(" ")
+            #vocab[int(id)] = name.replace("_", " ")
             vocab[int(id) - 1] = name.replace("_", " ")
     return vocab
 

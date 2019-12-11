@@ -2,7 +2,7 @@ import warnings
 warnings.simplefilter("ignore")
 import argparse
 import os
-from data import CIFAR10Dataset, Imagenet32Dataset
+from data import CIFAR10Dataset, Imagenet32Dataset, BirdsDataset
 from models.embedders import BERTEncoder, OneHotClassEmbedding, UnconditionalClassEmbedding
 import torch
 from models.pixelcnnpp import ConditionalPixelCNNpp
@@ -26,19 +26,26 @@ parser.add_argument("--n_resnet", type=int, default=5, help="number of layers fo
 parser.add_argument("--n_filters", type=int, default=160, help="dimensionality of the latent space")
 parser.add_argument("--sample_interval", type=int, default=1000, help="interval between image sampling")
 parser.add_argument("--use_cuda", type=int, default=1, help="use cuda if available")
-parser.add_argument("--output_dir", type=str, default="outputs/pixelcnn", help="directory to store the sampled outputs")
+parser.add_argument("--output_dir", type=str, default="outputs/birds", help="directory to store the sampled outputs")
 parser.add_argument("--debug", type=int, default=0)
 parser.add_argument("--train_on_val", type=int, default=0, help="train on val set, useful for debugging")
 parser.add_argument("--train", type=int, default=1, help="0 = eval, 1=train")
 parser.add_argument("--model_checkpoint", type=str, default=None,
                     help="load model from checkpoint, model_checkpoint = path_to_your_pixel_cnn_model.pt")
 parser.add_argument("--print_every", type=int, default=10)
-parser.add_argument("--dataset", type=str, default="cifar10", choices=["imagenet32", "cifar10"])
-parser.add_argument("--conditioning", type=str, default="unconditional", choices=["unconditional", "one-hot", "bert"])
+parser.add_argument("--dataset", type=str, default="birds", choices=["imagenet32", "cifar10", "birds"])
+parser.add_argument("--conditioning", type=str, default="bert", choices=["unconditional", "one-hot", "bert"])
+parser.add_argument("--comment", type=str, default="")
 
 
 def train(model, embedder, optimizer, scheduler,
           train_loader, val_loader, opt):
+    
+    if (opt.comment==""):
+        output_folder = opt.output_dir
+    else:
+        output_folder = os.path.join(opt.output_dir, opt.comment)
+        
     print("TRAINING STARTS")
     for epoch in range(opt.n_epochs):
         model = model.train()
@@ -70,25 +77,25 @@ def train(model, embedder, optimizer, scheduler,
             if (batches_done + 1) % opt.sample_interval == 0:
                 print("sampling_images")
                 model = model.eval()
-                sample_image(model, embedder, opt.output_dir, n_row=4,
+                sample_image(model, embedder, output_folder, n_row=4,
                              batches_done=batches_done,
                              dataloader=val_loader, device=device)
             # checkpoint every 500 batches
-            if (batches_done + 1) % 1000 == 0:      
+            if (batches_done + 1) % 5000 == 0:      
                 torch.save(model.state_dict(),
-                   os.path.join(opt.output_dir, 'models', 'epoch_{}_batch_{}.pt'.format(epoch, batches_done)))
+                   os.path.join(output_folder, 'models', 'epoch_{}_batch_{}.pt'.format(epoch, batches_done)))
                 
-            if (batches_done + 1) % 1000 == 0:
-                val_bpd = eval(model, embedder, val_loader)
-                writer.add_scalar("val/bpd", val_bpd, batches_done) #(epoch + 1) * len(train_loader))
+#             if (batches_done + 1) % 1000 == 0:
+#                 val_bpd = eval(model, embedder, val_loader)
+#                 writer.add_scalar("val/bpd", val_bpd, batches_done) #(epoch + 1) * len(train_loader))
                 
-#         val_bpd = eval(model, embedder, val_loader)
-#         writer.add_scalar("val/bpd", val_bpd, (epoch + 1) * len(train_loader))
+        val_bpd = eval(model, embedder, val_loader)
+        writer.add_scalar("val/bpd", val_bpd, (epoch + 1) * len(train_loader))
 
         torch.save(model.state_dict(),
-                   os.path.join(opt.output_dir, 'models', 'epoch_{}.pt'.format(epoch)))
+                   os.path.join(output_folder, 'models', 'epoch_{}.pt'.format(epoch)))
 
-    scheduler.step()
+        scheduler.step()
 
 
 def eval(model, embedder, test_loader):
@@ -117,10 +124,13 @@ if __name__ == "__main__":
     if opt.dataset == "imagenet32":
         train_dataset = Imagenet32Dataset(train=not opt.train_on_val, max_size=1 if opt.debug else -1)
         val_dataset = Imagenet32Dataset(train=0, max_size=1 if opt.debug else -1)
-    else:
-        assert opt.dataset == "cifar10"
+    elif opt.dataset=="cifar10":        
         train_dataset = CIFAR10Dataset(train=not opt.train_on_val, max_size=1 if opt.debug else -1)
         val_dataset = CIFAR10Dataset(train=0, max_size=1 if opt.debug else -1)
+    else:
+        assert opt.dataset=="birds"
+        train_dataset = BirdsDataset(train=not opt.train_on_val, max_size=1 if opt.debug else -1)
+        val_dataset = BirdsDataset(train=0, max_size=1 if opt.debug else -1)
 
     print("creating dataloaders")
     train_dataloader = torch.utils.data.DataLoader(
@@ -165,10 +175,12 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(generative_model.parameters(), lr=opt.lr)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=opt.lr_decay)
     # create output directory
+                             
+    output_folder = opt.output_dir if opt.comment=="" else os.path.join(opt.output_dir, opt.comment)                         
 
-    os.makedirs(os.path.join(opt.output_dir, "models"), exist_ok=True)
+    os.makedirs(os.path.join(output_folder, "models"), exist_ok=True)
     os.makedirs(os.path.join(opt.output_dir, "tensorboard"), exist_ok=True)
-    writer = SummaryWriter(log_dir=os.path.join(opt.output_dir, "tensorboard"))
+    writer = SummaryWriter(log_dir=os.path.join(opt.output_dir, "tensorboard"),comment=opt.comment)
 
     # ----------
     #  Training
@@ -185,7 +197,7 @@ if __name__ == "__main__":
         print("Loading model from state dict...")
         load_model(opt.model_checkpoint, generative_model)
         print("Model loaded.")
-        #eval(model=generative_model, embedder=encoder, test_loader=val_dataloader)
+        eval(model=generative_model, embedder=encoder, test_loader=val_dataloader)
         #sample_image_save_file(model, encoder, output_image_dir, n_row, dataloader, device)
-        sample_image_save_file(generative_model, encoder, opt.output_dir, n_row=opt.batch_size-1,                            
+        sample_image_save_file(generative_model, encoder, output_folder, n_row=opt.batch_size-1,                            
                              dataloader=val_dataloader, device=device)

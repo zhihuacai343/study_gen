@@ -1,0 +1,1 @@
+python train_pixelcnnpp.py --train 0 --model_checkpoint outputs/pixelcnn_imagenet32/models/epoch_0.pt --n_epochs 1 --use_cuda 1 --dataset imagenet32 --conditioning bert --output_dir outputs/pixelcnn_imagenet32/eval_samples --batch_size 100
