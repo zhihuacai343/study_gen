@@ -25,3 +25,8 @@ In `models/starter_models.py` you will find the **BERT encoder**  that you will 
 You will also find the interface `CaptionConditionedGenerativeModel` that your models have to implement. Its main method is the `forward` method that takes as input a batch of images `x`, a batch of text embeddings `h` and outputs the loss of your model. Your model should also implement a `sample` method and if it is a likelihood model, a `likelihood` method.
 
 A function to sample images and display them with the conditioned captions is given in `utils.py`.
+
+
+## To create the Birds dataset.
+
+Download the CUB-200-2011 data and text data folder to datasets/birds, use the createDataSet.py to create the Birds dataset.
